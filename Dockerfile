@@ -1,5 +1,3 @@
-# app/Dockerfile
-
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -9,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     software-properties-common \
     git \
+    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/Dynage-engineering/car-tracker.git .
