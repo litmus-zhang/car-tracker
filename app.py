@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 import cv2
 import time
+import datetime
 from ultralytics import YOLO  # make sure you have installed ultralytics
+from utils import store_today_data, load_sheet_data
 
-# Initialize session state for streaming control and counts
+# Initialize session state for streaming control, counts, and data storage flag
 if "streaming" not in st.session_state:
     st.session_state.streaming = True
 if "car_count" not in st.session_state:
@@ -14,6 +16,8 @@ if "bus_count" not in st.session_state:
     st.session_state.bus_count = 0
 if "truck_count" not in st.session_state:
     st.session_state.truck_count = 0
+if "data_stored" not in st.session_state:
+    st.session_state.data_stored = False  # ensures daily data is stored only once
 
 
 def stop_streaming():
@@ -37,22 +41,21 @@ st.markdown(
     """
 )
 
-# Prepare the left column for detection charts and metrics
+# Prepare the two columns for the UI
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Detected Vehicles")
-    # Generate a date range for the x-axis and sample data for bar chart
-    dates = pd.date_range(start="2025-04-01", periods=20, freq="D")
-    chart_data = pd.DataFrame(
-        np.random.randn(20, 3), index=dates, columns=["bus", "truck", "car"]
-    )
-    st.bar_chart(chart_data, use_container_width=True)
-    st.write("Detected vehicles over time.")
+    # Load historical data from Google Sheets and plot the bar chart.
+    sheet_df = load_sheet_data()
+    if sheet_df.empty:
+        st.write("No historical data available yet.")
+    else:
+        st.bar_chart(sheet_df.set_index("Date"), use_container_width=True)
+        st.write("Detected vehicles over time.")
 
     # Use a placeholder container for live metrics update
     metric_container = st.empty()
-    # Initial display of metrics
     mcols = metric_container.columns(3)
     mcols[0].metric("Car", st.session_state.car_count)
     mcols[1].metric("Bus", st.session_state.bus_count)
@@ -78,11 +81,11 @@ with col2:
         if not ret:
             st.error("Failed to capture video")
             break
+
         # Run YOLOv8 inference on the frame
         results = model(frame)
-        # results[0].boxes contains detected boxes; their class label indexes are in results[0].boxes.cls
         if results and results[0].boxes is not None:
-            # Get list of class indices for detections and map them to names using model.names
+            # Get detected class indices and update counts accordingly
             classes = results[0].boxes.cls.cpu().numpy().astype(int)
             for cls in classes:
                 label = model.model.names[cls]
@@ -93,17 +96,27 @@ with col2:
                 elif label == "truck":
                     st.session_state.truck_count += 1
 
-        # Update metrics in the left column
+        # Update live metrics in the left column
         mcols = metric_container.columns(3)
         mcols[0].metric("Car", st.session_state.car_count)
         mcols[1].metric("Bus", st.session_state.bus_count)
         mcols[2].metric("Truck", st.session_state.truck_count)
 
-        # Optionally, draw detected boxes on the frame (if desired) using results[0].plot()
+        # Optionally, draw detected boxes on the frame.
         annotated_frame = results[0].plot() if results else frame
-        # Convert the annotated frame (BGR) to RGB before displaying
         annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
         image_placeholder.image(annotated_frame, channels="RGB")
         time.sleep(0.03)  # Small delay to control frame rate
+
+        # Check if it's the end of the day (23:59 or later) and data hasn't been stored yet.
+        now = datetime.datetime.now().time()
+        if now.hour == 23 and now.minute >= 59 and not st.session_state.data_stored:
+            store_today_data(
+                st.session_state.car_count,
+                st.session_state.bus_count,
+                st.session_state.truck_count,
+            )
+            st.session_state.data_stored = True
+            st.success("Today's data has been automatically stored to Google Sheets.")
 
     cap.release()

@@ -1,20 +1,19 @@
+# filepath: /Users/mac/Desktop/devprojects/playground/car-tracker/utils.py
 import gspread
 from google.oauth2.service_account import Credentials
+import datetime
+import pandas as pd
+import streamlit as st  # needed to access st.secrets
 
 
-# Google Sheets helper functions
-# -------------------------------
 def get_google_sheet_worksheet():
     SCOPE = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive",
     ]
-    # Make sure you have your credentials.json file in your project directory
-    credentials = Credentials.from_service_account_file(
-        "credentials.json", scopes=SCOPE
-    )
+    # Load credentials from Streamlit secrets
+    credentials = Credentials.from_service_account_info(st.secrets["gcp"], scopes=SCOPE)
     gc = gspread.authorize(credentials)
-    # Open your Google Sheet by title (or use .open_by_key)
     sh = gc.open("VehicleData")
     worksheet = sh.sheet1
     return worksheet
@@ -23,7 +22,6 @@ def get_google_sheet_worksheet():
 def store_today_data(car_count, bus_count, truck_count):
     worksheet = get_google_sheet_worksheet()
     today = datetime.date.today().strftime("%Y-%m-%d")
-    # Append a new row: Date, Number of Cars, Number of Truck, Number of Bus
     worksheet.append_row([today, car_count, truck_count, bus_count])
 
 
