@@ -1,27 +1,40 @@
-import cv2
-import numpy as np
+import gspread
+from google.oauth2.service_account import Credentials
 
-def load_model():
-    """Load MobileNet-SSD model"""
-    prototxt = "models/deploy.prototxt"
-    caffemodel = "models/mobilenet_iter_73000.caffemodel"
-    return cv2.dnn.readNetFromCaffe(prototxt, caffemodel)
 
-def detect_vehicles(frame, net, confidence_threshold=0.5):
-    """Process frame and return vehicle detections"""
-    (h, w) = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(frame, 0.007843, (w, h), 127.5)
-    net.setInput(blob)
-    detections = net.forward()
-    
-    vehicles = []
-    for i in range(detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
-        if confidence > confidence_threshold:
-            class_id = int(detections[0, 0, i, 1])
-            if class_id in [7, 8, 9]:  # Car, truck, bus
-                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                (x1, y1, x2, y2) = box.astype("int")
-                vehicles.append((x1, y1, x2, y2))
-    
-    return vehicles
+# Google Sheets helper functions
+# -------------------------------
+def get_google_sheet_worksheet():
+    SCOPE = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    # Make sure you have your credentials.json file in your project directory
+    credentials = Credentials.from_service_account_file(
+        "credentials.json", scopes=SCOPE
+    )
+    gc = gspread.authorize(credentials)
+    # Open your Google Sheet by title (or use .open_by_key)
+    sh = gc.open("VehicleData")
+    worksheet = sh.sheet1
+    return worksheet
+
+
+def store_today_data(car_count, bus_count, truck_count):
+    worksheet = get_google_sheet_worksheet()
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    # Append a new row: Date, Number of Cars, Number of Truck, Number of Bus
+    worksheet.append_row([today, car_count, truck_count, bus_count])
+
+
+def load_sheet_data():
+    worksheet = get_google_sheet_worksheet()
+    records = worksheet.get_all_records()
+    if not records:
+        return pd.DataFrame(
+            columns=["Date", "Number of Cars", "Number of Truck", "Number of Bus"]
+        )
+    df = pd.DataFrame(records)
+    df["Date"] = pd.to_datetime(df["Date"])
+    df.sort_values("Date", inplace=True)
+    return df
